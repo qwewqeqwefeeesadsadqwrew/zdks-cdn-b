@@ -1,7 +1,7 @@
 /* 全量预缓存：第一次打开就把整包下到本地，之后每一关都走缓存 */
 (function () {
-  var CACHE = 'zdks-cdn-a-wlzs-b2-v1';
-  var DONE = 'precache-done-zdks-cdn-a-wlzs-b2-v1-v2';
+  var CACHE = 'zdks-cdn-b-b3-v1';
+  var DONE = 'precache-done-zdks-cdn-b-b3-v1-v2';
   var LIST = 'precache.json';
   var CONC = 6;
 
