@@ -24,10 +24,17 @@ var ALWAYS_NETWORK = /(\/index-b60\.html$|\/sw60\.js$|zlzs-autoplay-60\.js$|zlzs
 
 // 本仓 bundle 请求 → 实际要拉的目标地址（返回 null 表示原样）
 function resolveTarget(u) {
+  // 关卡包：本仓只有第三批 20 关，其余 40 关转发到 zdks-l4-demo
   var m = u.pathname.match(/^\/zdks-cdn-b\/WLZS\/Bundle\/assets\/bundleLv_(\d+)\//);
-  if (!m) return null;
-  if (B3[m[1]]) return null;                                  // 本仓有 → 原样
-  return u.origin + u.pathname.replace(/^\/zdks-cdn-b\//, REMOTE_PREFIX + '/');
+  if (m) {
+    if (B3[m[1]]) return null;                                  // 本仓有 → 原样
+    return u.origin + u.pathname.replace(/^\/zdks-cdn-b\//, REMOTE_PREFIX + '/');
+  }
+  // 关卡缩略图：本仓镜像时漏了这两张，l4-demo 有 → 一并转发（没有就照旧 404，不影响玩法）
+  if (/^\/zdks-cdn-b\/WLZS\/Bundle\/levelTexture\//.test(u.pathname)) {
+    return u.origin + u.pathname.replace(/^\/zdks-cdn-b\//, REMOTE_PREFIX + '/');
+  }
+  return null;
 }
 
 self.addEventListener('install', function (e) {
