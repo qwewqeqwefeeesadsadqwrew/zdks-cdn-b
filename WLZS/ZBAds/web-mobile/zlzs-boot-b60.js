@@ -190,6 +190,12 @@
     } catch (e) { DEMO.log.push('preload-ex ' + e); }
   }
 
+  // ---- 卡死看护：卡住就重进本关，重进 2 次还不行才换下一关（远山 2026-10-30 定）----
+  // 判据用「进度心跳」而不是总时长：只要画面段/步骤/状态还在变，说明真在打，不打断。
+  var STALL_MS = 120000;     // 120 秒没有任何进度变化 = 卡死
+  var HARD_MS = 420000;      // 单关硬上限 7 分钟（一直在动但永远打不完，只防死锁）
+  var MAX_RETRY = 2;         // 同一关最多重进 2 次，第 3 次卡就换关
+
   function loop() {
     if (DEMO.stopped) return;
     var m = mcc();
@@ -242,31 +248,57 @@
     if (DEMO.state === 'play') {
       var winNow = null;
       try { winNow = m.UI.GetUI(m.enum_ui.Win); } catch (e) {}
-      if (winNow) { try { window.__zlzsAuto.stop(); } catch (e) {} DEMO.state = 'win'; setTimeout(loop, 200); return; }
-      // 超时看护：一关盯 7 分钟还没结算，判定卡死，停自动玩并走 skip 路径（只防死锁，不算胜利）
-      if (DEMO.levelStartAt && Date.now() - DEMO.levelStartAt > 420000) {
-        try { window.__zlzsAuto.stop(); } catch (e) {}
-        DEMO.log.push('timeout ' + DEMO.queue[DEMO.qi]);
-        // 不在这里记 failed：统一由 win 状态记账，避免同一关重复计数
-        DEMO.winWaitAt = Date.now() - 12000;
-        DEMO.state = 'win';
-        setTimeout(loop, 300);
-        return;
-      }
+      if (winNow) { try { window.__zlzsAuto.stop(); } catch (e) {} DEMO.retry = 0; DEMO.state = 'win'; setTimeout(loop, 200); return; }
+
       var A = window.__zlzsAuto;
       if (!A) { setTimeout(loop, 500); return; }
       var st = {};
       try { st = JSON.parse(A.status()); } catch (e) {}
-      if (!st.running) {
-        if (st.why === 'scene-done') {
-          DEMO.log.push('clear ' + DEMO.queue[DEMO.qi]);
-          DEMO.state = 'win';
-        } else if (st.why && st.why !== 'stopped') {
-          DEMO.log.push('auto-end ' + st.why);
+
+      // 卡死判定：停转 / 进度长时间不动 / 单关超硬上限
+      var sinceProg = st.lastProgressAt ? (Date.now() - st.lastProgressAt) : (Date.now() - (DEMO.levelStartAt || Date.now()));
+      var dead = !st.running && st.why !== 'scene-done';
+      var stalled = !!st.running && sinceProg > STALL_MS;
+      var tooLong = !!DEMO.levelStartAt && (Date.now() - DEMO.levelStartAt) > HARD_MS;
+
+      if (dead || stalled || tooLong) {
+        var why = tooLong ? 'hard ' + Math.round((Date.now() - DEMO.levelStartAt) / 1000) + 's'
+                : stalled ? 'stall ' + Math.round(sinceProg / 1000) + 's'
+                : 'auto-end ' + (st.why || '?');
+        try { window.__zlzsAuto.stop(); } catch (e) {}
+        DEMO.retry = (DEMO.retry || 0) + 1;
+        if (DEMO.retry <= MAX_RETRY) {
+          DEMO.log.push('stall-retry ' + DEMO.queue[DEMO.qi] + ' #' + DEMO.retry + ' (' + why + ')');
+          DEMO.state = 'reenter';
+        } else {
+          DEMO.log.push('stall-giveup ' + DEMO.queue[DEMO.qi] + ' (' + why + ') → 换下一关');
+          (DEMO.failed = DEMO.failed || []).push(DEMO.queue[DEMO.qi]);
+          DEMO.winWaitAt = Date.now() - 12000;   // 直接走切关，不再等胜利面板
           DEMO.state = 'win';
         }
+        setTimeout(loop, 300);
+        return;
+      }
+
+      if (!st.running) {
+        // 只剩 scene-done 会走到这里：画面段打完了、胜利面板还没弹
+        DEMO.log.push('clear ' + DEMO.queue[DEMO.qi]);
+        DEMO.state = 'win';
       }
       setTimeout(loop, 800);
+      return;
+    }
+
+    if (DEMO.state === 'reenter') {
+      // 卡死重进：先清旧关卡壳，再重新进**同一关**（不换关）
+      var sameLv = DEMO.queue[DEMO.qi];
+      cleanShells();
+      try { m.game.dispachEvent(m.enum_event.Remove_Level); m.UI.closeAllUI(); } catch (e) {}
+      try { m.game.enterGengLevel(sameLv); } catch (e) { DEMO.log.push('reenter-err ' + e); }
+      DEMO.log.push('reenter ' + sameLv + ' (第 ' + DEMO.retry + ' 次重试)');
+      DEMO.preloadFor = null;        // 允许重新预载下一关
+      DEMO.state = 'loading';
+      setTimeout(loop, 1500);
       return;
     }
 
@@ -305,6 +337,7 @@
     if (DEMO.state === 'next') {
       if (Date.now() < DEMO.nextAt) { setTimeout(loop, 200); return; }
       var nextLv = DEMO.queue[DEMO.qi];
+      DEMO.retry = 0;               // 新关重新计数重试次数
       try {
         m.game.dispachEvent(m.enum_event.Remove_Level);
         m.UI.closeAllUI();
@@ -320,27 +353,61 @@
     setTimeout(loop, 1000);
   }
   // Service Worker 必须先接管页面：60 关里只有 20 关在本仓，另 40 关的 bundle 靠 SW 转发到 zdks-l4-demo。
-  // 首次加载时 SW 还在安装 → 等 ready（activate 里 clients.claim() 会立刻接管，不需要刷新页面）。
+  // 坑（2026-10-30 实测踩到）：`navigator.serviceWorker.ready` 只代表「已经有 active worker」，
+  // **不代表当前页面已被它控制**。claim() 是异步的，首次加载时 ready 常常先 resolve、controller 还是 null。
+  // 所以不能拿 controller 当判据——要直接探「转发到底通不通」。
+  function waitController(ms) {
+    if (navigator.serviceWorker.controller) return Promise.resolve(true);
+    return new Promise(function (res) {
+      var settled = false;
+      function finish(v) { if (settled) return; settled = true; res(v); }
+      var timer = setTimeout(function () { finish(!!navigator.serviceWorker.controller); }, ms);
+      var iv = setInterval(function () {
+        if (navigator.serviceWorker.controller) { clearInterval(iv); clearTimeout(timer); finish(true); }
+      }, 120);
+      try {
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          clearInterval(iv); clearTimeout(timer); finish(true);
+        });
+      } catch (e) {}
+    });
+  }
+  // 真判据：拿一个「本仓没有、只能靠转发」的关卡文件探一下。200 = 转发真的通了。
+  var PROBE_URLS = [
+    '/zdks-cdn-b/WLZS/Bundle/assets/bundleLv_1/config.c9a7c.json',
+    '/zdks-cdn-b/WLZS/Bundle/assets/bundleLv_1/index.c9a7c.js'
+  ];
+  function probeForward(i) {
+    i = i || 0;
+    if (i >= PROBE_URLS.length) return Promise.resolve(false);
+    return fetch(PROBE_URLS[i], { cache: 'no-store' })
+      .then(function (r) { return r.ok ? true : probeForward(i + 1); })
+      .catch(function () { return probeForward(i + 1); });
+  }
   function waitSW() {
     if (!('serviceWorker' in navigator)) { DEMO.sw = 'unsupported'; return Promise.resolve(false); }
     return navigator.serviceWorker.register('/zdks-cdn-b/WLZS/sw60.js', { scope: '/zdks-cdn-b/WLZS/' })
       .then(function () { return navigator.serviceWorker.ready; })
-      .then(function () {
-        DEMO.sw = navigator.serviceWorker.controller ? 'ready' : 'ready-no-controller';
-        return true;
+      .then(function () { return waitController(6000); })
+      .then(function (hasCtrl) { DEMO.ctrl = hasCtrl; return probeForward(); })
+      .then(function (ok) {
+        DEMO.sw = ok ? (DEMO.ctrl ? 'ready' : 'forward-ok-claim-late') : 'forward-broken';
+        return ok;
       })
       .catch(function (e) { DEMO.sw = 'failed: ' + e; return false; });
   }
 
   waitSW().then(function (ok) {
-    if (!ok || DEMO.sw !== 'ready') {
-      // SW 没接管 → 另 40 关的 bundle 会 404。降级成本仓的 20 关，不让整轮卡死。
-      DEMO.log.push('SW ' + DEMO.sw + ' → 降级成本仓 20 关');
-      DEMO.pool = POOL_B3.slice();
+    if (!ok) {
+      // 转发不通 → 那 40 关会 404。**只滤掉本仓加载不了的**，不要覆盖用户传的 ?levels=
+      var B3SET = {};
+      for (var bi = 0; bi < POOL_B3.length; bi++) B3SET[POOL_B3[bi]] = 1;
+      var keep = DEMO.pool.filter(function (lv) { return B3SET[lv]; });
+      DEMO.log.push('SW ' + DEMO.sw + ' → 只留本仓能加载的 ' + keep.length + '/' + DEMO.pool.length + ' 关');
+      DEMO.pool = keep.length ? keep : POOL_B3.slice();
       DEMO.history = [];
       DEMO.queue = newQueue(DEMO.pool, null, DEMO.history);
       DEMO.history.push(DEMO.queue.join(','));
-      saveHistory('zlzsDemoHistorySwFallback', DEMO.history);
     }
     setTimeout(loop, 600);
   });
