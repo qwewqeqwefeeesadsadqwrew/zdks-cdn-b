@@ -203,7 +203,7 @@
     closeSignIn(m);
     pressAddTime(m);
     // 长时间演示防止日志无限增长
-    if (DEMO.log.length > 300) DEMO.log.splice(0, DEMO.log.length - 300);
+    if (DEMO.log.length > 1500) DEMO.log.splice(0, DEMO.log.length - 1500);
 
     if (DEMO.state === 'boot') {
       var lvUI = null;
