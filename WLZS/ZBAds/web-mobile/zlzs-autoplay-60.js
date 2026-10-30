@@ -17,6 +17,8 @@
     stats: { actions: 0, drags: 0, taps: 0, swipes: 0, holds: 0, rubs: 0, skips: 0 },
     gestures: [],
     gaps: [],
+    lastProgressAt: 0,
+    _progSeen: '',
     stop: function () { A.running = false; A._why = 'stopped'; },
     status: function () {
       var p = preComp();
@@ -24,6 +26,8 @@
         running: A.running, why: A._why || null, stats: A.stats,
         mini: p ? p.currentMiniLv : null, step: p ? p.currentStepNum : null,
         fin: p ? p.currentStepFinishNum : null, lastGesture: A.lastGesture || null,
+        lastProgressAt: A.lastProgressAt || null,
+        sinceProgressMs: A.lastProgressAt ? (Date.now() - A.lastProgressAt) : null,
         intro: pendingIntro ? { leftMs: Math.max(0, (introFrom ? introFrom + introMs : Date.now() + introMs) - Date.now()), totalMs: Math.round(introMs) } : null,
         gestures: A.gestures.slice(-8),
         gapStats: A.gaps.length ? { n: A.gaps.length, p50: pct(A.gaps, 0.5), p95: pct(A.gaps, 0.95), max: Math.max.apply(null, A.gaps) } : null,
@@ -534,6 +538,11 @@
       var block = s.getChildByName('BlockInputEvent');
       if (block && block.active) { setTimeout(function () { tick(g); }, 120); return; }
 
+      // 进度心跳：只要「画面段/步骤/完成数/状态」有任何变化就记一次。
+      // boot 靠它判断「是真的在打」还是「卡住了」（卡住 → 重进本关，再不行就换关）。
+      var progNow = progress();
+      if (progNow !== A._progSeen) { A._progSeen = progNow; A.lastProgressAt = Date.now(); }
+
       // 换关（StalkPre_1 组件重建）或同关内切场景（currentMiniLv +1）→ 重新"先看一眼画面"
       if (p !== lastPre) {
         lastPre = p;
@@ -611,6 +620,7 @@
   A.start = function () {
     A.running = true; A._why = null; A.err = null;
     lastProg = ''; lastAt = 0; idle = 0; lastMini = -1; lastStep = -1;
+    A._progSeen = ''; A.lastProgressAt = Date.now();
     // 记下启动时已存在的关卡组件（boot 在新关加载完才 start），避免把同一组件误判成"换关"
     lastPre = null;
     try { lastPre = preComp(); } catch (e) {}
