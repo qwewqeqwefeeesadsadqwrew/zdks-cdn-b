@@ -247,7 +247,7 @@
     var jx = rand(-2.2, 2.2), jy = rand(-2.2, 2.2);
     emit(node, CC().Node.EventType.TOUCH_START, p.x, p.y, 0, 0);
     A.stats.taps++;
-    recordGesture({ type: 'tap', node: node.name, at: p, press: Math.round(press) });
+    recordGesture({ type: 'tap', node: node.name, pt: { x: Math.round(p.x), y: Math.round(p.y) }, press: Math.round(press) });
     setTimeout(function () {
       try {
         if (Math.random() < 0.7) emit(node, CC().Node.EventType.TOUCH_MOVE, p.x + jx, p.y + jy, jx, jy);
@@ -293,7 +293,7 @@
     var ms = Math.max(200, (Number(seconds) || 2) * 1000 + rand(100, 600));
     emit(node, CC().Node.EventType.TOUCH_START, p.x, p.y, 0, 0);
     A.stats.holds++;
-    recordGesture({ type: 'hold', node: node.name, at: p, dur: Math.round(ms) });
+    recordGesture({ type: 'hold', node: node.name, pt: { x: Math.round(p.x), y: Math.round(p.y) }, dur: Math.round(ms) });
     var t0 = Date.now();
     (function jitterLoop() {
       if (Date.now() - t0 > ms) {
