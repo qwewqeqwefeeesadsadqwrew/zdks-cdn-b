@@ -10,7 +10,7 @@
 
   function CC() { return window.cc; }
   var A = {
-    version: 12,
+    version: 13,
     running: false,
     log: [],
     err: null,
@@ -19,6 +19,8 @@
     gaps: [],
     lastProgressAt: 0,
     _progSeen: '',
+    // 拟人：每关随机"拿错食材"（2026-11-03 远山要求：每次进同一关都不同，绝不许重复）
+    wrong: { on: true, done: 0, lv: null, plan: null, pool: [], hist: [] },
     stop: function () { A.running = false; A._why = 'stopped'; },
     status: function () {
       var p = preComp();
@@ -31,17 +33,146 @@
         intro: pendingIntro ? { leftMs: Math.max(0, (introFrom ? introFrom + introMs : Date.now() + introMs) - Date.now()), totalMs: Math.round(introMs) } : null,
         gestures: A.gestures.slice(-8),
         gapStats: A.gaps.length ? { n: A.gaps.length, p50: pct(A.gaps, 0.5), p95: pct(A.gaps, 0.95), max: Math.max.apply(null, A.gaps) } : null,
+        wrongPlan: (A.wrong && A.wrong.plan) ? A.wrong.plan.slice() : null, wrongHistN: (A.wrong && A.wrong.hist) ? A.wrong.hist.length : 0, wrongPool: (A.wrong && A.wrong.pool) ? A.wrong.pool.slice() : [],
+        wrongDone: (A.wrong && A.wrong.done) || 0,
         log: A.log.slice(-25), err: A.err
       });
     }
   };
   window.__zlzsAuto = A;
+  window.__ZLZS_BUILD = 'wrongpick-v2-' + Date.now();
   function recordGesture(g) {
     g.at = Date.now(); // 出手时刻（验收用：算转场后过了多久才动手）
     A.lastGesture = g;
     A.gestures.push(g);
     if (A.gestures.length > 12) A.gestures.shift();
   }
+  // ---- 拟人：随机"拿错食材"（2026-11-03 远山要求）----
+  // 实测依据（C:/Users/User/Desktop/wlzs60/_exp/probe-wrong5.js）：
+  //   拖错道具 → 游戏自己把道具弹回原位，进度不动（4/5 如此）
+  //   但如果错道具正好是"当前步 / 后两步"，会被当成"提前做了"而推进（1/5）
+  //   → 所以候选必须 st > curStep + 2，且只认 activeInHierarchy（用过的旧节点留在场景里会骗人）
+  var WKEY = 'zlzsWrongPick';
+  function loadWHist() {
+    try { var o = JSON.parse(localStorage.getItem(WKEY) || '{}'); return (o && typeof o === 'object') ? o : {}; } catch (e) { return {}; }
+  }
+  function saveWHist(o) { try { localStorage.setItem(WKEY, JSON.stringify(o)); } catch (e) {} }
+  function wrongCandidates(p, curStep) {
+    var arr = (p && p.currentSceneConfig) || [];
+    var out = [];
+    for (var i = 0; i < arr.length; i++) {
+      var it = arr[i];
+      if (!it || !it.node) continue;
+      var st = Number(it.Step) || 0;
+      if (!st || st <= curStep + 2) continue;            // 关键：避开当前步与后两步
+      if (!/TouchMove|Click/.test(String(it.Type || ''))) continue;
+      var n = findAny(it.node);
+      if (!n || !n.activeInHierarchy) continue;          // 用过的旧节点会留在场景里，必须排掉
+      if (!rectOf(n)) continue;
+      out.push({ name: it.node, step: st });
+    }
+    return out;
+  }
+  // ---- 每关的"拿错方案"：组合级去重（2026-11-03 修）----
+  // 为什么不能用"步骤级去重"：一关能错的步骤只有 9~10 个，
+  // 步骤级去重播 5~10 轮就把候选耗光，之后再也不拿错 → 等于重复。
+  // 改成组合级：从见过的步骤里挑 1~3 个，组合签名记历史，用过的不再出现。
+  var HKEY = 'zlzsWrongHist', PKEY = 'zlzsWrongPool';
+  function loadJ(k) { try { var o = JSON.parse(localStorage.getItem(k) || '{}'); return (o && typeof o === 'object') ? o : {}; } catch (e) { return {}; } }
+  function saveJ(k, o) { try { localStorage.setItem(k, JSON.stringify(o)); } catch (e) {} }
+  function loadHist(lv) { var o = loadJ(HKEY), a = o[lv]; return Array.isArray(a) ? a : []; }
+  function saveHist(lv, arr) { if (arr.length > 600) arr.splice(0, arr.length - 600); var o = loadJ(HKEY); o[lv] = arr; saveJ(HKEY, o); }
+  function loadPool(lv) { var o = loadJ(PKEY), a = o[lv]; return Array.isArray(a) ? a.slice() : []; }
+  function savePool(lv, arr) { var o = loadJ(PKEY); o[lv] = arr; saveJ(PKEY, o); }
+  function lvOf(p) {
+    try {
+      var ic = p && p.ctrl && p.ctrl.interConfig;
+      if (ic) {
+        if (ic.lv != null) return String(ic.lv);
+        if (ic.level != null) return String(ic.level);
+      }
+    } catch (e) {}
+    try {
+      var d = window.__zlzsDemo;
+      if (d && typeof d.status === 'function') {
+        var st = JSON.parse(d.status());
+        if (st && st.level != null) return String(st.level);
+      }
+    } catch (e) {}
+    return '?';
+  }
+  // 从未用过的组合里摇一个（1~3 个步骤）
+  function pickCombo(pool, hist, lv, fromStep) {
+    var lo = Math.max(3, Number(fromStep) || 3);
+    var cand = pool.filter(function (s) { return s >= lo; });   // 前两步不错；已经过去的步骤也不选
+    if (cand.length < 2) return null;
+    for (var t = 0; t < 300; t++) {
+      var n = 1 + Math.floor(Math.random() * Math.min(3, cand.length));
+      var picked = [];
+      while (picked.length < n) {
+        var s = cand[Math.floor(Math.random() * cand.length)];
+        if (picked.indexOf(s) < 0) picked.push(s);
+      }
+      picked.sort(function (a, b) { return a - b; });
+      var sig = picked.join(',');
+      if (hist.indexOf(sig) < 0) { hist.push(sig); saveHist(lv, hist); return picked; }
+    }
+    hist.length = 0; saveHist(lv, hist);   // 组合用尽 → 清空重来
+    return null;
+  }
+  // 机会式执行：到计划里的步骤就先把错道具拖一次（游戏会弹回，进度不动）
+  function tryWrongPick(p, tip) {
+    if (!A.wrong || !A.wrong.on) return false;
+    if (!tip) return false;
+    var cur = Number(tip.Step) || 0;
+    if (!cur) return false;
+
+    // 关卡号在换关那一瞬取不到，这里补
+    var lvNow = lvOf(p);
+    if (lvNow !== '?' && lvNow !== A.wrong.lv) {
+      A.wrong.lv = lvNow;
+      A.wrong.pool = loadPool(lvNow);
+      A.wrong.hist = loadHist(lvNow);
+      A.wrong.plan = null;
+    }
+    // 持续收集"这一关见过哪些步骤"（currentSceneConfig 是逐步加载的，只能边跑边记）
+    if (A.wrong.pool.indexOf(cur) < 0) {
+      A.wrong.pool.push(cur);
+      A.wrong.pool.sort(function (a, b) { return a - b; });
+      savePool(A.wrong.lv, A.wrong.pool);
+    }
+    // 用"见过的步骤"生成组合，不依赖当前配置是否加载完整
+    if (A.wrong.plan == null && A.wrong.pool.length >= 5) {
+      A.wrong.plan = pickCombo(A.wrong.pool, A.wrong.hist, A.wrong.lv, cur) || [];
+      try { console.log('[WPLAN] lv' + A.wrong.lv + ' plan=' + JSON.stringify(A.wrong.plan) + ' histN=' + A.wrong.hist.length); } catch (e) {}
+    }
+    if (!A.wrong.plan || !A.wrong.plan.length) return false;
+    while (A.wrong.plan.length && A.wrong.plan[0] < cur) A.wrong.plan.shift();   // 错过了就丢
+    if (!A.wrong.plan.length || A.wrong.plan[0] !== cur) return false;
+
+    var cands = wrongCandidates(p, cur);
+    if (!cands.length) return false;
+    var pick = cands[Math.floor(Math.random() * cands.length)];
+    var wn = findAny(pick.name);
+    if (!wn) return false;
+    var goal = null, cfg2 = p.currentSceneConfig || [];
+    for (var i = 0; i < cfg2.length; i++) {
+      if (Number(cfg2[i].Step) === cur && typeof cfg2[i].Value === 'string' && cfg2[i].Value) {
+        goal = findAny(cfg2[i].Value);
+        if (goal) break;
+      }
+    }
+    A.wrong.plan.shift();
+    A.wrong.done++;
+    A.stats.wrongs = (A.stats.wrongs || 0) + 1;
+    A.log.push('WRONGPICK ' + pick.name + ' (step' + cur + ')');
+    if (A.log.length > 200) A.log.splice(0, A.log.length - 200);
+    try { console.log('[WRONGPICK] ' + pick.name + ' step' + cur + ' lv' + A.wrong.lv); } catch (e) {}
+    recordGesture({ type: 'wrongpick', node: pick.name, step: cur });
+    if (goal) drag(wn, goal); else drag(wn, wn);
+    return true;
+  }
+
   // 间隔分位数（验收判据：p95 明显大于 p50、max 远大于 p95 → 长尾真的存在）
   function pct(arr, p) {
     if (!arr || !arr.length) return null;
@@ -547,6 +678,11 @@
       if (p !== lastPre) {
         lastPre = p;
         lastMiniSeen = p.currentMiniLv;
+        A.wrong.lv = null;          // 换关那瞬拿不到，交给 tryWrongPick 补
+        A.wrong.plan = null;
+        A.wrong.done = 0;
+        A.wrong.pool = [];
+        A.wrong.hist = [];
         beginIntro('level' + ((p.ctrl.interConfig && p.ctrl.interConfig.lv) || '?'));
       } else if (lastMiniSeen >= 0 && p.currentMiniLv === lastMiniSeen + 1) {
         beginIntro('scene' + p.currentMiniLv);
@@ -574,6 +710,12 @@
       var unlocker = keyOnly ? findUnlocker(tip, p) : null;
       lastProg = prog; lastAt = now;
       A.stats.actions++;
+      // 拟人：到计划里的步骤就先拿错一次（游戏会把道具弹回原位，进度不动）
+      if (tryWrongPick(p, tip)) {
+        waitUntil = Date.now() + humanGap(1800, 1000, 3400, 0.04);
+        setTimeout(function () { tick(g); }, 220);
+        return;
+      }
       var ok;
       if (unlocker) {
         tapNode(unlocker);
