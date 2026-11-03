@@ -6,7 +6,7 @@
 (function () {
   'use strict';
   if (window.__zlzsXhrRetry) return;
-  window.__zlzsXhrRetry = { patched: 0, retried: 0, maxRetry: 4, timeoutMs: 20000 };
+  window.__zlzsXhrRetry = { patched: 0, retried: 0, maxRetry: 4, timeoutMs: 12000 };
 
   var XO = XMLHttpRequest.prototype.open;
   var XS = XMLHttpRequest.prototype.send;
@@ -23,7 +23,7 @@
 
     // 只处理 GET，且调用方没设超时（或者设得过大）时，给个上限
     var isGet = String(xhr.__zlzsM || 'GET').toUpperCase() === 'GET';
-    if (isGet && (!xhr.timeout || xhr.timeout > window.__zlzsXhrRetry.timeoutMs)) {
+    if (isGet && (!xhr.timeout || xhr.timeout > window.__zlzsXhrRetry.timeoutMs)) {   // 超过 12 秒一律按挂起处理
       xhr.timeout = window.__zlzsXhrRetry.timeoutMs;
     }
 
@@ -39,7 +39,9 @@
           console.warn('[xhr-retry] 第' + xhr.__zlzsTry + '次重试: ' + String(xhr.__zlzsU).slice(-70));
         } catch (e) {}
         try {
-          // 重新 open 会重置状态，但 onload/onerror/timeout 等属性仍保留在实例上
+          // 关键：先 abort 掉挂住的那个连接，否则它一直占着 HTTP/2 的槽位，
+          // 新请求只会排在它后面一起死。
+          try { xhr.abort(); } catch (e0) {}
           XO.call(xhr, xhr.__zlzsM, xhr.__zlzsU, true);
           xhr.timeout = R.timeoutMs;
           XS.call(xhr, null);
