@@ -3,6 +3,11 @@
 <head>
   <meta charset="utf-8">
 
+  <!-- 并发限流：GitHub Pages 的 HTTP/2 在几十个请求并发时会把连接压死（大文件永久挂起）。
+       实测：UIBundle/import/0c/0c6073fb4.b711a.json 单独下 2.4s，并发时 100s 不返回。
+       必须在所有游戏脚本之前加载。来源：zdks-l4-demo/zdks-netq.js -->
+  <script src="zdks-netq.js?v=1"></script>
+
   <!-- 演示站：解锁全部关卡（写游戏自己的存档键）+ 关卡资源根指向本站 -->
   <script>
   (function () {
