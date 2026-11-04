@@ -168,6 +168,7 @@
   // 实测（_exp/probe-time3.js）：点关卡组件上的 addTimeBtn，时间 235s → 413s，随时可点。
   // 剩余时间从 downTimeLab（节点 TimeLab）的 "mm:ss" 文本解析。
   var addPlan = { at: 0, done: 0, times: 0, tries: 0, maxTimes: 3, lv: null };
+  window.__zlzsAddPlan = addPlan;   // 调试用：控制台看当前触发点/次数
 
   function timeLeftSec() {
     try {
