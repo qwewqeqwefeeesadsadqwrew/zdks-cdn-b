@@ -1,64 +1,92 @@
-// zlzs-xhr-retry.js —— XHR 超时自动重试（修 GitHub Pages 偶发请求永久挂起）
-// 现象：Cocos 资源加载的最后几个 XHR 发出去后永不返回，进度条卡 100%，游戏不往下走。
-//      服务端同一 URL 用 curl 拉 0.9~10s 能拿到，说明是浏览器连接层面的挂起，不是文件问题。
-// 做法：给每个 XHR 加超时；超时后用同样的 method/url 重新发（保留调用方挂的 onload/onerror 等）。
-// 只对 GET 生效（POST 不能随便重发）。
+// zlzs-xhr-retry.js —— XHR 卡死自救（v2：改成"看有没有下载进度"，不再用总时长）
+//
+// v1 的问题（2026-11-04 实测踩到）：用 xhr.timeout = 12s 判断"挂住"，
+//   但慢网下一次要下 8~10MB 的关卡图片，12 秒根本下不完 →
+//   被反复 abort（控制台一片 net::ERR_ABORTED）→ 4 次重试用尽 → 彻底卡死。
+//
+// v2 判据：看**有没有下载进度**。
+//   只要有 progress 事件（哪怕一次只来 1KB），就说明连接活着，绝不动它；
+//   连续 IDLE_MS 毫秒没有任何字节进来，才判定为"挂住"，abort 后重发。
 (function () {
   'use strict';
   if (window.__zlzsXhrRetry) return;
-  window.__zlzsXhrRetry = { patched: 0, retried: 0, maxRetry: 4, timeoutMs: 12000 };
+
+  var CFG = {
+    idleMs: 25000,    // 连续这么多毫秒没有字节进来 = 挂住
+    maxRetry: 3,      // 最多重发 3 次
+    tickMs: 3000      // 每 3 秒检查一次
+  };
+  var R = window.__zlzsXhrRetry = { cfg: CFG, retried: 0, aborted: 0, alive: 0 };
 
   var XO = XMLHttpRequest.prototype.open;
   var XS = XMLHttpRequest.prototype.send;
 
   XMLHttpRequest.prototype.open = function (method, url) {
-    this.__zlzsM = method;
-    this.__zlzsU = url;
+    this.__m = method;
+    this.__u = url;
+    this.__retry = 0;
     return XO.apply(this, arguments);
   };
 
-  XMLHttpRequest.prototype.send = function (body) {
+  XMLHttpRequest.prototype.send = function () {
     var xhr = this;
     var args = arguments;
+    var isGet = String(xhr.__m || 'GET').toUpperCase() === 'GET';
 
-    // 只处理 GET，且调用方没设超时（或者设得过大）时，给个上限
-    var isGet = String(xhr.__zlzsM || 'GET').toUpperCase() === 'GET';
-    if (isGet && (!xhr.timeout || xhr.timeout > window.__zlzsXhrRetry.timeoutMs)) {   // 超过 12 秒一律按挂起处理
-      xhr.timeout = window.__zlzsXhrRetry.timeoutMs;
-    }
+    // 关键：不要用 xhr.timeout（那是"总时长"，慢网必然误杀）
+    try { xhr.timeout = 0; } catch (e) {}
 
-    if (isGet && !xhr.__zlzsRetryHooked) {
-      xhr.__zlzsRetryHooked = true;
-      xhr.__zlzsTry = 0;
-      xhr.addEventListener('timeout', function () {
-        var R = window.__zlzsXhrRetry;
-        if (xhr.__zlzsTry >= R.maxRetry) return;
-        xhr.__zlzsTry++;
-        R.retried++;
-        try {
-          console.warn('[xhr-retry] 第' + xhr.__zlzsTry + '次重试: ' + String(xhr.__zlzsU).slice(-70));
-        } catch (e) {}
-        try {
-          // 关键：先 abort 掉挂住的那个连接，否则它一直占着 HTTP/2 的槽位，
-          // 新请求只会排在它后面一起死。
-          try { xhr.abort(); } catch (e0) {}
-          XO.call(xhr, xhr.__zlzsM, xhr.__zlzsU, true);
-          xhr.timeout = R.timeoutMs;
-          XS.call(xhr, null);
-          R.patched++;
-          return;
-        } catch (e) {
-          try { console.warn('[xhr-retry] 重试失败: ' + e); } catch (e2) {}
-        }
-        // 重试发不出去：手动触发 error，让上层（Cocos）自己走失败分支/重试
-        try {
-          var ev = new Event('error');
-          xhr.dispatchEvent(ev);
-          if (typeof xhr.onerror === 'function') xhr.onerror(ev);
-        } catch (e3) {}
+    if (!isGet) return XS.apply(xhr, args);
+
+    xhr.__lastByte = Date.now();
+    xhr.__hooked = false;
+
+    function hookOnce() {
+      if (xhr.__hooked) return;
+      xhr.__hooked = true;
+      ['progress', 'load', 'loadend', 'abort', 'error'].forEach(function (evt) {
+        xhr.addEventListener(evt, function () {
+          xhr.__lastByte = Date.now();
+          if (evt === 'load' || evt === 'loadend') xhr.__done = true;
+        });
       });
     }
 
+    function watch() {
+      if (xhr.__done) return;
+      if (xhr.readyState === 4) { xhr.__done = true; return; }
+      var idle = Date.now() - (xhr.__lastByte || Date.now());
+      if (idle >= CFG.idleMs) {
+        if (xhr.__retry >= CFG.maxRetry) {
+          try { console.warn('[xhr-retry] 放弃: ' + String(xhr.__u).slice(-60)); } catch (e) {}
+          return;
+        }
+        xhr.__retry++;
+        R.retried++;
+        R.aborted++;
+        try {
+          console.warn('[xhr-retry] ' + Math.round(idle / 1000) + 's 无数据，第' + xhr.__retry + '次重发: ' + String(xhr.__u).slice(-60));
+        } catch (e) {}
+        try {
+          xhr.abort();
+          XO.call(xhr, xhr.__m, xhr.__u, true);
+          xhr.__lastByte = Date.now();
+          xhr.__hooked = false;
+          xhr.__done = false;
+          hookOnce();
+          XS.call(xhr, null);
+        } catch (e) {
+          try { xhr.dispatchEvent(new Event('error')); } catch (e2) {}
+          return;
+        }
+      } else {
+        R.alive++;
+      }
+      setTimeout(watch, CFG.tickMs);
+    }
+
+    hookOnce();
+    setTimeout(watch, CFG.tickMs);
     return XS.apply(xhr, args);
   };
 })();
