@@ -164,6 +164,47 @@
     return false;
   }
 
+  // ---- 主动加时（2026-11-04 远山定：剩余 50~10 秒之间随机时刻加，绝对不能固定）----
+  // 实测（_exp/probe-time3.js）：点关卡组件上的 addTimeBtn，时间 235s → 413s，随时可点。
+  // 剩余时间从 downTimeLab（节点 TimeLab）的 "mm:ss" 文本解析。
+  var addPlan = { at: 0, done: 0, times: 0, maxTimes: 3, lv: null };
+
+  function timeLeftSec() {
+    try {
+      var shell = cc.find('Canvas/StalkPre_1');
+      var pre = shell && shell.getComponent('StalkPre_1');
+      var lab = pre && pre.downTimeLab;
+      var t = lab ? String(lab.string || '') : '';
+      var mm = t.match(/^(\d{1,2}):(\d{2})$/);
+      if (mm) return Number(mm[1]) * 60 + Number(mm[2]);
+    } catch (e) {}
+    return null;
+  }
+
+  // 摇一个新的触发点：10~50 秒之间，带小数，保证每次都不一样
+  function planAddTime() {
+    addPlan.at = 10 + Math.random() * 40;
+    addPlan.done = 0;
+    addPlan.times = 0;
+    addPlan.lv = (DEMO.queue && DEMO.queue[DEMO.qi]) || null;
+    DEMO.log.push('addtime-plan@' + addPlan.at.toFixed(1) + 's lv' + addPlan.lv);
+    if (DEMO.log.length > 1500) DEMO.log.splice(0, DEMO.log.length - 1500);
+  }
+
+  // 真正去点加时按钮（关卡组件上的 addTimeBtn，随时可点）
+  function clickAddTimeBtn(m) {
+    try {
+      var shell = cc.find('Canvas/StalkPre_1');
+      var pre = shell && shell.getComponent('StalkPre_1');
+      var btn = pre && pre.addTimeBtn;
+      if (btn && btn.node && btn.node.activeInHierarchy) {
+        btn.node.emit('click', btn);
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
   // 预载下一关 bundle：提前把 config/index 和资源拉进 Cocos 缓存，切关时不用现下载。
   function preloadNext() {
     try {
@@ -235,6 +276,7 @@
         DEMO.log.push('loaded ' + DEMO.queue[DEMO.qi]);
         DEMO.state = 'play';
         DEMO.levelStartAt = Date.now();
+        planAddTime();   // 本关的加时触发点（10~50 秒随机）
         // 计时：游戏只在玩家第一次触摸关卡节点时才开始倒计时；自动玩不发那个事件，
         // 这里直接调游戏自己的 downStartTime()，让顶部时间正常从 04:00 开始走。
         try { if (pre.downStartTime) pre.downStartTime(); } catch (e) { DEMO.log.push('timer-err ' + e); }
@@ -246,6 +288,20 @@
     }
 
     if (DEMO.state === 'play') {
+      // 剩余时间掉到随机触发点以下 → 主动加时（远山要求：50~10 秒之间随机，不许固定）
+      var leftNow = timeLeftSec();
+      if (leftNow != null && !addPlan.done && leftNow <= addPlan.at && addPlan.times < addPlan.maxTimes) {
+        if (clickAddTimeBtn(m)) {
+          addPlan.done = 1;
+          addPlan.times++;
+          var afterLeft = timeLeftSec();
+          DEMO.log.push('addtime@plan' + addPlan.at.toFixed(1) + ' left' + leftNow + '→' + afterLeft);
+          if (DEMO.log.length > 1500) DEMO.log.splice(0, DEMO.log.length - 1500);
+          setTimeout(function () { planAddTime(); }, 1500);   // 下一次再摇一个新的窗口
+          setTimeout(loop, 300);
+          return;
+        }
+      }
       var winNow = null;
       try { winNow = m.UI.GetUI(m.enum_ui.Win); } catch (e) {}
       if (winNow) { try { window.__zlzsAuto.stop(); } catch (e) {} DEMO.retry = 0; DEMO.state = 'win'; setTimeout(loop, 200); return; }
