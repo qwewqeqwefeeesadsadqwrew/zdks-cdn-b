@@ -167,7 +167,7 @@
   // ---- 主动加时（2026-11-04 远山定：剩余 50~10 秒之间随机时刻加，绝对不能固定）----
   // 实测（_exp/probe-time3.js）：点关卡组件上的 addTimeBtn，时间 235s → 413s，随时可点。
   // 剩余时间从 downTimeLab（节点 TimeLab）的 "mm:ss" 文本解析。
-  var addPlan = { at: 0, done: 0, times: 0, maxTimes: 3, lv: null };
+  var addPlan = { at: 0, done: 0, times: 0, tries: 0, maxTimes: 3, lv: null };
 
   function timeLeftSec() {
     try {
@@ -182,12 +182,13 @@
   }
 
   // 摇一个新的触发点：10~50 秒之间，带小数，保证每次都不一样
-  function planAddTime() {
+  function planAddTime(keepTimes) {
     addPlan.at = 10 + Math.random() * 40;
     addPlan.done = 0;
-    addPlan.times = 0;
+    addPlan.tries = 0;
+    if (!keepTimes) { addPlan.times = 0; }        // 只有进关时才清零，加时后重摇不清
     addPlan.lv = (DEMO.queue && DEMO.queue[DEMO.qi]) || null;
-    DEMO.log.push('addtime-plan@' + addPlan.at.toFixed(1) + 's lv' + addPlan.lv);
+    DEMO.log.push('addtime-plan@' + addPlan.at.toFixed(1) + 's lv' + addPlan.lv + ' n' + addPlan.times);
     if (DEMO.log.length > 1500) DEMO.log.splice(0, DEMO.log.length - 1500);
   }
 
@@ -291,15 +292,22 @@
       // 剩余时间掉到随机触发点以下 → 主动加时（远山要求：50~10 秒之间随机，不许固定）
       var leftNow = timeLeftSec();
       if (leftNow != null && !addPlan.done && leftNow <= addPlan.at && addPlan.times < addPlan.maxTimes) {
+        addPlan.tries = (addPlan.tries || 0) + 1;
         if (clickAddTimeBtn(m)) {
           addPlan.done = 1;
           addPlan.times++;
           var afterLeft = timeLeftSec();
-          DEMO.log.push('addtime@plan' + addPlan.at.toFixed(1) + ' left' + leftNow + '→' + afterLeft);
+          DEMO.log.push('addtime@plan' + addPlan.at.toFixed(1) + ' left' + leftNow + '→' + afterLeft + ' (' + addPlan.times + '/' + addPlan.maxTimes + ')');
           if (DEMO.log.length > 1500) DEMO.log.splice(0, DEMO.log.length - 1500);
-          setTimeout(function () { planAddTime(); }, 1500);   // 下一次再摇一个新的窗口
+          if (addPlan.times < addPlan.maxTimes) {
+            setTimeout(function () { planAddTime(true); }, 1500);   // 再摇一个新窗口（次数不清零）
+          }
           setTimeout(loop, 300);
           return;
+        }
+        if (addPlan.tries >= 5) {                 // 点不动 5 次就放弃本关，避免每拍狂点
+          addPlan.done = 1;
+          DEMO.log.push('addtime-giveup left' + leftNow);
         }
       }
       var winNow = null;
