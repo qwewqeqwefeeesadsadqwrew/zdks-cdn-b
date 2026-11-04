@@ -3,7 +3,11 @@
 <head>
   <meta charset="utf-8">
 
-  <!-- XHR 超时重试：GitHub Pages 偶发请求永久挂起（进度条卡 100%）。必须在所有游戏脚本之前。 -->
+  <!-- OSS 版：整站资源走阿里云杭州，基准地址换掉后所有相对路径自动指过去 -->
+  <base href="https://wlzs-demo-2026.oss-cn-hangzhou.aliyuncs.com/WLZS/ZBAds/web-mobile/">
+  <script>window.__ZLZS_NO_SW = true; window.__ZLZS_OSS_ROOT = 'https://wlzs-demo-2026.oss-cn-hangzhou.aliyuncs.com/';</script>
+
+  <!-- XHR 超时重试：偶发请求永久挂起（进度条卡 100%）。必须在所有游戏脚本之前。 -->
   <script src="zlzs-xhr-retry.js?v=1"></script>
 
   <!-- 演示站：解锁全部关卡（写游戏自己的存档键）+ 关卡资源根指向本站 -->
@@ -14,7 +18,7 @@
       localStorage.setItem('WoLaiZhangShaoV1_allUnLockHour', '999999');
       localStorage.setItem('WoLaiZhangShaoV1_lastSignInTime', String(Date.now()));
     } catch (e) {}
-    var base = location.href.replace(/WLZS\/ZBAds\/web-mobile\/.*$/, '');
+    var base = window.__ZLZS_OSS_ROOT || location.href.replace(/WLZS\/ZBAds\/web-mobile\/.*$/, '');
     var t = setInterval(function () {
       try {
         var mcc = window.__require && window.__require('mCore').mcc;
@@ -66,15 +70,7 @@
   <!--<link rel="apple-touch-icon" href=".png" />-->
   <!--<link rel="apple-touch-icon-precomposed" href=".png" />-->
 
-  <!-- 尽早装 Service Worker：60 关里 40 关的 bundle 靠它转发到 zdks-l4-demo 仓库；boot 里会再注册一次（幂等） -->
-  <script>
-  (function () {
-    if (!('serviceWorker' in navigator)) return;
-    try {
-      navigator.serviceWorker.register('/zdks-cdn-b/WLZS/sw60.js', { scope: '/zdks-cdn-b/WLZS/' });
-    } catch (e) {}
-  })();
-  </script>
+  <!-- OSS 版：60 关已同路径合并到同一个桶，不再需要 Service Worker 跨仓转发 -->
 
   <link rel="stylesheet" type="text/css" href="style-mobile.25fc5.css"/>
   <link rel="icon" href="favicon.8de18.ico"/>
