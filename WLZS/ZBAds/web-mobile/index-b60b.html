@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+
+  <!-- OSS 版：整站资源走阿里云杭州，基准地址换掉后所有相对路径自动指过去 -->
+  <base href="https://wlzs-demo-2026.oss-cn-hangzhou.aliyuncs.com/WLZS/ZBAds/web-mobile/">
+  <script>window.__ZLZS_NO_SW = true; window.__ZLZS_OSS_ROOT = 'https://wlzs-demo-2026.oss-cn-hangzhou.aliyuncs.com/';</script>
+
+  <!-- XHR 超时重试：偶发请求永久挂起（进度条卡 100%）。必须在所有游戏脚本之前。 -->
+  <script src="zlzs-xhr-retry.js?v=1"></script>
+
+  <!-- 演示站：解锁全部关卡（写游戏自己的存档键）+ 关卡资源根指向本站 -->
+  <script>
+  (function () {
+    try {
+      localStorage.setItem('WoLaiZhangShaoV1_unLockAllTime', String(Date.now()));
+      localStorage.setItem('WoLaiZhangShaoV1_allUnLockHour', '999999');
+      localStorage.setItem('WoLaiZhangShaoV1_lastSignInTime', String(Date.now()));
+    } catch (e) {}
+    var base = window.__ZLZS_OSS_ROOT || location.href.replace(/WLZS\/ZBAds\/web-mobile\/.*$/, '');
+    var t = setInterval(function () {
+      try {
+        var mcc = window.__require && window.__require('mCore').mcc;
+        if (!mcc || !mcc.vestBagMgr) return;
+        if (!mcc.vestBagMgr.__zlzsPatched) {
+          Object.defineProperty(mcc.vestBagMgr, 'remoteUrl', {
+            get: function () { return base; },
+            configurable: true
+          });
+          mcc.vestBagMgr.__zlzsPatched = true;
+        }
+        clearInterval(t);
+      } catch (e) {}
+    }, 25);
+  })();
+  </script>
+
+  <title>我来掌勺 · 60 关整池自动玩（B 版）</title>
+
+  <!--http://www.html5rocks.com/en/mobile/mobifying/-->
+  <meta name="viewport"
+        content="width=device-width,user-scalable=no,initial-scale=1, minimum-scale=1,maximum-scale=1"/>
+
+  <!--https://developer.apple.com/library/safari/documentation/AppleApplications/Reference/SafariHTMLRef/Articles/MetaTags.html-->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="format-detection" content="telephone=no">
+
+  <!-- force webkit on 360 -->
+  <meta name="renderer" content="webkit"/>
+  <meta name="force-rendering" content="webkit"/>
+  <!-- force edge on IE -->
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/>
+  <meta name="msapplication-tap-highlight" content="no">
+
+  <!-- force full screen on some browser -->
+  <meta name="full-screen" content="yes"/>
+  <meta name="x5-fullscreen" content="true"/>
+  <meta name="360-fullscreen" content="true"/>
+  
+  <!-- force screen orientation on some browser -->
+  <meta name="screen-orientation" content="portrait"/>
+  <meta name="x5-orientation" content="portrait">
+
+  <!--fix fireball/issues/3568 -->
+  <!--<meta name="browsermode" content="application">-->
+  <meta name="x5-page-mode" content="app">
+
+  <!--<link rel="apple-touch-icon" href=".png" />-->
+  <!--<link rel="apple-touch-icon-precomposed" href=".png" />-->
+
+  <!-- OSS 版：60 关已同路径合并到同一个桶，不再需要 Service Worker 跨仓转发 -->
+
+  <link rel="stylesheet" type="text/css" href="style-mobile.25fc5.css"/>
+  <link rel="icon" href="favicon.8de18.ico"/>
+</head>
+<body>
+  <canvas id="GameCanvas" oncontextmenu="event.preventDefault()" tabindex="0"></canvas>
+  <div id="zlzs-tip" style="position:fixed;left:0;right:0;bottom:12px;text-align:center;font:13px/1.6 -apple-system,'Microsoft YaHei',sans-serif;color:#7a6a5a;z-index:99999;pointer-events:none;text-shadow:0 1px 2px rgba(255,255,255,.8)">
+  首次打开约 10 秒（资源走国内阿里云），之后走缓存秒开；请勿关闭<br>
+  <span id="zlzs-tip2" style="opacity:.75"></span>
+</div>
+<div id="splash">
+    <div class="progress-bar stripes">
+      <span style="width: 0%"></span>
+    </div>
+  </div>
+
+<script src="src/settings.c186b.js" charset="utf-8"></script>
+
+<script src="main.8bf75.js" charset="utf-8"></script>
+
+<script type="text/javascript">
+(function () {
+    // open web debugger console
+    if (typeof VConsole !== 'undefined') {
+        window.vConsole = new VConsole();
+    }
+
+    var debug = window._CCSettings.debug;
+    var splash = document.getElementById('splash');
+    splash.style.display = 'block';
+
+    function loadScript (moduleName, cb) {
+      function scriptLoaded () {
+          document.body.removeChild(domScript);
+          domScript.removeEventListener('load', scriptLoaded, false);
+          cb && cb();
+      };
+      var domScript = document.createElement('script');
+      domScript.async = true;
+      domScript.src = moduleName;
+      domScript.addEventListener('load', scriptLoaded, false);
+      document.body.appendChild(domScript);
+    }
+
+    loadScript(debug ? 'cocos2d-js.js' : 'cocos2d-js-min.40d3d.js', function () {
+      if (CC_PHYSICS_BUILTIN || CC_PHYSICS_CANNON) {
+        loadScript(debug ? 'physics.js' : 'physics-min.js', window.boot);
+      }
+      else {
+        window.boot();
+      }
+    });
+})();
+</script>
+<script src="zlzs-autoplay-60.js?v=1" charset="utf-8"></script>
+<script src="zlzs-boot-b60b.js?v=1" charset="utf-8"></script>
+<!-- 技能版入口：不引 precache.js（旧的清单式全量预缓存已弃用，改由 sw60.js 边玩边缓存） -->
+<!-- 线上原版见 game-autoplay/references/case-wlzs-zbads.md 的交付记录 -->
+
+<script>
+(function () {
+  var tip = document.getElementById('zlzs-tip');
+  var tip2 = document.getElementById('zlzs-tip2');
+  var t0 = Date.now();
+  var n = 0;
+  var XO2 = XMLHttpRequest.prototype.open;
+  var count = 0;
+  var origSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function () {
+    var xhr = this;
+    count++;
+    try {
+      xhr.addEventListener('loadend', function () {
+        n++;
+        if (tip2 && tip && tip.style.display !== 'none') {
+          var sec = Math.round((Date.now() - t0) / 1000);
+          tip2.textContent = '已完成 ' + n + ' 个 · 已用 ' + sec + ' 秒';
+        }
+      });
+    } catch (e) {}
+    return origSend.apply(this, arguments);
+  };
+  var iv = setInterval(function () {
+    var d = window.__zlzsDemo;
+    var state = null;
+    try { state = JSON.parse(d.status()).state; } catch (e) {}
+    if (state === 'play') { if (tip) tip.style.display = 'none'; clearInterval(iv); }
+    else if (state === 'loading' || state === 'boot') {
+      var sec = Math.round((Date.now() - t0) / 1000);
+      if (tip2) tip2.textContent = '已用 ' + sec + ' 秒 · 已收到 ' + n + ' 个资源';
+    }
+  }, 1000);
+})();
+</script>
+</body>
+</html>
