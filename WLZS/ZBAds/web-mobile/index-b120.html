@@ -88,6 +88,17 @@
   </div>
 
 <script src="src/settings.c186b.js" charset="utf-8"></script>
+<!--B120_BUNDLE_VERS-->
+<script>
+// 120 关版补全：线上 settings 只登记了 bundleLv_366/367，其余 118 关没版本号会 404。
+// 这里不覆盖游戏本体，只在入口页把缺失的版本号补进 _CCSettings.bundleVers。
+(function(){
+  var v={"bundleLv_1":"c9a7c","bundleLv_10":"fea10","bundleLv_100":"7d4a2","bundleLv_101":"ad397","bundleLv_102":"aacea","bundleLv_103":"cce1e","bundleLv_104":"9c790","bundleLv_105":"ccee7","bundleLv_106":"15104","bundleLv_107":"6ab8e","bundleLv_108":"b5c29","bundleLv_109":"06fc1","bundleLv_11":"5b1e4","bundleLv_110":"ac97b","bundleLv_111":"facca","bundleLv_112":"83954","bundleLv_113":"d4695","bundleLv_114":"47837","bundleLv_115":"6a28a","bundleLv_116":"2762c","bundleLv_117":"8d65d","bundleLv_118":"f09fa","bundleLv_119":"124fe","bundleLv_12":"d6cef","bundleLv_120":"b962d","bundleLv_121":"4522f","bundleLv_122":"b9e69","bundleLv_126":"4790f","bundleLv_13":"f99ad","bundleLv_131":"9e1fc","bundleLv_132":"a06de","bundleLv_136":"8b051","bundleLv_14":"688b7","bundleLv_141":"6ddba","bundleLv_145":"63144","bundleLv_147":"96e40","bundleLv_152":"96bd8","bundleLv_157":"274ab","bundleLv_160":"5528d","bundleLv_163":"fe3fd","bundleLv_168":"31ed2","bundleLv_173":"a82d4","bundleLv_177":"f84b9","bundleLv_179":"cb9d3","bundleLv_184":"98661","bundleLv_188":"89149","bundleLv_190":"0f91b","bundleLv_191":"bee33","bundleLv_194":"01b3c","bundleLv_197":"fce75","bundleLv_2":"1b1d6","bundleLv_20":"98627","bundleLv_202":"3ac1e","bundleLv_207":"6f23f","bundleLv_208":"7e8a9","bundleLv_212":"709a3","bundleLv_216":"3228b","bundleLv_218":"d6acf","bundleLv_222":"832d8","bundleLv_224":"9ee9e","bundleLv_229":"30d76","bundleLv_230":"71a19","bundleLv_235":"52acb","bundleLv_236":"317ed","bundleLv_24":"ff76b","bundleLv_241":"11bff","bundleLv_246":"d8b75","bundleLv_248":"f081d","bundleLv_252":"c1bc8","bundleLv_257":"b5f4f","bundleLv_261":"d8350","bundleLv_263":"940ee","bundleLv_268":"51f21","bundleLv_27":"bbfbf","bundleLv_270":"3b803","bundleLv_271":"a71e6","bundleLv_272":"514a4","bundleLv_276":"ca398","bundleLv_28":"21a0e","bundleLv_281":"fc5b9","bundleLv_286":"1b819","bundleLv_287":"595cb","bundleLv_292":"f2f49","bundleLv_296":"3a56f","bundleLv_3":"b4c70","bundleLv_300":"51bfe","bundleLv_302":"2b90b","bundleLv_307":"27ffd","bundleLv_31":"d1fac","bundleLv_312":"6af7b","bundleLv_313":"6cd4c","bundleLv_318":"f784c","bundleLv_32":"3b3a0","bundleLv_323":"a4a72","bundleLv_324":"716fe","bundleLv_326":"284aa","bundleLv_327":"fd81e","bundleLv_330":"9db77","bundleLv_332":"cc20d","bundleLv_337":"b13dc","bundleLv_338":"a1c1c","bundleLv_339":"d626c","bundleLv_340":"511e4","bundleLv_341":"ad8ba","bundleLv_342":"73ec5","bundleLv_343":"335b0","bundleLv_344":"afe4a","bundleLv_345":"49202","bundleLv_346":"96eb5","bundleLv_347":"89115","bundleLv_348":"60754","bundleLv_349":"0c081","bundleLv_350":"31872","bundleLv_351":"40d40","bundleLv_352":"5f465","bundleLv_353":"c8a28","bundleLv_354":"db92a","bundleLv_355":"66e48","bundleLv_356":"597e1","bundleLv_357":"54bb9","bundleLv_358":"303b3","bundleLv_359":"96c0f","bundleLv_36":"dba81","bundleLv_360":"17888","bundleLv_361":"b808d","bundleLv_362":"92a4b","bundleLv_363":"ba79f","bundleLv_364":"0a399","bundleLv_365":"abc6a","bundleLv_366":"dbf36","bundleLv_367":"bb822","bundleLv_37":"64f59","bundleLv_38":"a9a37","bundleLv_39":"588ee","bundleLv_4":"ebfb7","bundleLv_40":"1d202","bundleLv_41":"434eb","bundleLv_42":"24692","bundleLv_43":"0c06f","bundleLv_44":"f7b93","bundleLv_45":"fe641","bundleLv_46":"bcc99","bundleLv_47":"fda52","bundleLv_48":"56234","bundleLv_49":"3a872","bundleLv_5":"a9183","bundleLv_50":"c68bb","bundleLv_51":"b505d","bundleLv_52":"956b7","bundleLv_53":"3d0a3","bundleLv_54":"b5102","bundleLv_55":"d5d46","bundleLv_56":"a0f94","bundleLv_57":"7fb9d","bundleLv_58":"ebd6c","bundleLv_59":"90e5a","bundleLv_6":"2699d","bundleLv_60":"485af","bundleLv_61":"0b143","bundleLv_62":"5d106","bundleLv_63":"0d435","bundleLv_64":"a6340","bundleLv_65":"3d2f6","bundleLv_66":"aca6e","bundleLv_67":"f3a06","bundleLv_68":"27c9a","bundleLv_69":"5aaf1","bundleLv_7":"4e4a6","bundleLv_70":"bd1e8","bundleLv_71":"2e571","bundleLv_72":"57e4c","bundleLv_73":"5b3b8","bundleLv_74":"a3b1f","bundleLv_75":"514ff","bundleLv_76":"f3eef","bundleLv_77":"bf5b2","bundleLv_78":"5b2ac","bundleLv_79":"14fcb","bundleLv_8":"f5c51","bundleLv_80":"c90cf","bundleLv_81":"1825f","bundleLv_82":"accee","bundleLv_83":"93e50","bundleLv_84":"4517d","bundleLv_85":"24d6a","bundleLv_86":"4189c","bundleLv_87":"b7663","bundleLv_88":"e4810","bundleLv_89":"71e74","bundleLv_9":"d727a","bundleLv_90":"6ff31","bundleLv_91":"9e664","bundleLv_92":"6aa6c","bundleLv_93":"9a85f","bundleLv_94":"6abab","bundleLv_95":"70d88","bundleLv_96":"14337","bundleLv_97":"60754","bundleLv_98":"f6e56","bundleLv_99":"36874"};
+  if(!window._CCSettings) return;
+  var bv=window._CCSettings.bundleVers||(window._CCSettings.bundleVers={});
+  for(var k in v) bv[k]=v[k];
+})();
+</script>
 
 <script src="main.8bf75.js" charset="utf-8"></script>
 
@@ -125,8 +136,11 @@
     });
 })();
 </script>
-<script src="zlzs-autoplay-120.js?v=1" charset="utf-8"></script>
-<script src="zlzs-boot-b120.js?v=1" charset="utf-8"></script>
+<script src="zlzs-autoplay-120.js?v=6" charset="utf-8"></script>
+<script src="zlzs-boot-b120-util.js?v=1" charset="utf-8"></script>
+<script src="zlzs-boot-b120-add.js?v=2" charset="utf-8"></script>
+<script src="zlzs-boot-b120-flow.js?v=2" charset="utf-8"></script>
+<script src="zlzs-boot-b120.js?v=7" charset="utf-8"></script>
 <!-- 技能版入口：不引 precache.js（旧的清单式全量预缓存已弃用，改由 sw60.js 边玩边缓存） -->
 <!-- 线上原版见 game-autoplay/references/case-wlzs-zbads.md 的交付记录 -->
 
