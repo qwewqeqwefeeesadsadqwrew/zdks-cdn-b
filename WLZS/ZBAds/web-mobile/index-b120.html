@@ -13,7 +13,10 @@
   <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
-      navigator.serviceWorker.register('sw.js', { scope: './' })
+      // 必须用绝对 URL：页面有 <base href="阿里云 OSS">，相对路径 'sw.js' 会被解析成
+      // OSS 地址 → 跨域 → SW 注册直接失败（实测 SecurityError）。
+      var base = 'https://qwewqeqwefeeesadsadqwrew.github.io/zdks-cdn-b/WLZS/ZBAds/web-mobile/';
+      navigator.serviceWorker.register(base + 'sw.js', { scope: base })
         .catch(function (e) { console.warn('[sw] 注册失败', e); });
     });
   }
