@@ -5,7 +5,19 @@
 
   <!-- OSS 版：整站资源走阿里云杭州，基准地址换掉后所有相对路径自动指过去 -->
   <base href="https://wlzs-demo-2026.oss-cn-hangzhou.aliyuncs.com/WLZS/ZBAds/web-mobile/">
-  <script>window.__ZLZS_NO_SW = true; window.__ZLZS_OSS_ROOT = 'https://wlzs-demo-2026.oss-cn-hangzhou.aliyuncs.com/';</script>
+  <script>window.__ZLZS_OSS_ROOT = 'https://wlzs-demo-2026.oss-cn-hangzhou.aliyuncs.com/';</script>
+
+  <!-- 运行时缓存 Service Worker（照《变个花样玩》方案，2026-11-15）：
+       第一次打开边玩边缓存；之后进关命中本地缓存。
+       入口页 / 驱动 / boot 由 sw.js 的 ALWAYS_NETWORK 排除，永远走网络，保证改版能推出去。 -->
+  <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js', { scope: './' })
+        .catch(function (e) { console.warn('[sw] 注册失败', e); });
+    });
+  }
+  </script>
 
   <!-- XHR 超时重试：偶发请求永久挂起（进度条卡 100%）。必须在所有游戏脚本之前。 -->
   <script src="zlzs-xhr-retry.js?v=1"></script>
