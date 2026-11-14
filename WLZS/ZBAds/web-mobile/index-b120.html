@@ -92,10 +92,6 @@
 </head>
 <body>
   <canvas id="GameCanvas" oncontextmenu="event.preventDefault()" tabindex="0"></canvas>
-  <div id="zlzs-tip" style="position:fixed;left:0;right:0;bottom:12px;text-align:center;font:13px/1.6 -apple-system,'Microsoft YaHei',sans-serif;color:#7a6a5a;z-index:99999;pointer-events:none;text-shadow:0 1px 2px rgba(255,255,255,.8)">
-  首次打开约 10 秒（资源走国内阿里云），请勿关闭<br>
-  <span id="zlzs-tip2" style="opacity:.75"></span>
-</div>
 <div id="splash">
     <div class="progress-bar stripes">
       <span style="width: 0%"></span>
@@ -159,40 +155,5 @@
 <!-- 技能版入口：不引 precache.js（旧的清单式全量预缓存已弃用，改由 sw60.js 边玩边缓存） -->
 <!-- 线上原版见 game-autoplay/references/case-wlzs-zbads.md 的交付记录 -->
 
-<script>
-(function () {
-  var tip = document.getElementById('zlzs-tip');
-  var tip2 = document.getElementById('zlzs-tip2');
-  var t0 = Date.now();
-  var n = 0;
-  var XO2 = XMLHttpRequest.prototype.open;
-  var count = 0;
-  var origSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.send = function () {
-    var xhr = this;
-    count++;
-    try {
-      xhr.addEventListener('loadend', function () {
-        n++;
-        if (tip2 && tip && tip.style.display !== 'none') {
-          var sec = Math.round((Date.now() - t0) / 1000);
-          tip2.textContent = '已完成 ' + n + ' 个 · 已用 ' + sec + ' 秒';
-        }
-      });
-    } catch (e) {}
-    return origSend.apply(this, arguments);
-  };
-  var iv = setInterval(function () {
-    var d = window.__zlzsDemo;
-    var state = null;
-    try { state = JSON.parse(d.status()).state; } catch (e) {}
-    if (state === 'play') { if (tip) tip.style.display = 'none'; clearInterval(iv); }
-    else if (state === 'loading' || state === 'boot') {
-      var sec = Math.round((Date.now() - t0) / 1000);
-      if (tip2) tip2.textContent = '已用 ' + sec + ' 秒 · 已收到 ' + n + ' 个资源';
-    }
-  }, 1000);
-})();
-</script>
 </body>
 </html>
