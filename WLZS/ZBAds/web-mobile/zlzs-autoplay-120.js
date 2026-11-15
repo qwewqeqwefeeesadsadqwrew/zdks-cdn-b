@@ -77,7 +77,16 @@
   function loadJ(k) { try { var o = JSON.parse(localStorage.getItem(k) || '{}'); return (o && typeof o === 'object') ? o : {}; } catch (e) { return {}; } }
   function saveJ(k, o) { try { localStorage.setItem(k, JSON.stringify(o)); } catch (e) {} }
   function loadHist(lv) { var o = loadJ(HKEY), a = o[lv]; return Array.isArray(a) ? a : []; }
-  function saveHist(lv, arr) { if (arr.length > 600) arr.splice(0, arr.length - 600); var o = loadJ(HKEY); o[lv] = arr; saveJ(HKEY, o); }
+  // 兼容模式：?safe=1 一键退回 11-13 之前的旧行为（关曲线随机 / 关 localStorage 持久化 / 恢复 20 秒收尾）
+  // 用途：若旧版不卡、新版几小时后卡，用这个开关二分定位到底是哪一项引起的。
+  var SAFE = (function () {
+    try { return /[?&]safe=1(&|$)/.test(String(location.search || '')); } catch (e) { return false; }
+  })();
+  function saveHist(lv, arr) {
+    if (SAFE) return;                                    // 旧版没有这个持久化
+    if (arr.length > 600) arr.splice(0, arr.length - 600);
+    var o = loadJ(HKEY); o[lv] = arr; saveJ(HKEY, o);
+  }
   function lvOf(p) {
     try {
       var ic = p && p.ctrl && p.ctrl.interConfig;
@@ -251,7 +260,10 @@
   // 移动时长：Fitts 定律 log2(距离/目标宽度 + 1)——拖得远就慢、目标小更慢
   function fittsDur(dist, width) {
     var id = Math.log2(dist / Math.max(width || 60, 8) + 1);
-    return clamp(110 + 205 * id, 240, 1400);
+    // 2026-11-15 放慢一档（远山：247~388ms 太快，真人不会这么拖）：
+    //   原 110+205×id、下限 240 → 现在 150+280×id、下限 400、上限 2000。
+    //   实测目标：短距 400~500ms、中距 600~900ms、长距 1000~1600ms。
+    return clamp(150 + 280 * id, 400, 2000);
   }
   // 框内正态落点（真人偏中心，不是均匀撒满整框）
   function gaussPointInRect(r, spread) {
@@ -333,6 +345,7 @@
   // 第 25 条：拖动路径随机曲线（每次形状不同）；?pathTest=0 退回单峰弧
   var PATH_TEST = (function () {
     try {
+      if (SAFE) return false;                            // 兼容模式关掉曲线随机
       if (/[?&]pathTest=0(&|$)/.test(String(location.search || ''))) return false;
       return true;
     } catch (e) { return true; }
@@ -388,7 +401,7 @@
     var nx = -vy / dist, ny = vx / dist;
     // Fitts 定律定时长：距离越远 / 目标越小越慢（线性/固定区间会被统计出来）
     var twid = tr ? Math.min(tr.w, tr.h) : 80;
-    var dur = clamp(fittsDur(dist, twid) * (0.85 + Math.random() * 0.3), 240, 1400);
+    var dur = clamp(fittsDur(dist, twid) * (0.85 + Math.random() * 0.3), 400, 2000);
     // 过冲：拖得远时手会冲过目标再折回（真人「刹不住」）
     var osAmount = (dist > 400 && Math.random() < 0.7) ? rand(20, 60) : 0;
     var bx = vx / dist, by = vy / dist;
@@ -399,10 +412,23 @@
     var t0 = Date.now(), lx = sp.x, ly = sp.y;
     var track = [];                                     // 路径采样（每 ~12.5% 一点，供验收曲线幅度）
     var lastSample = -1;
+    // 拟人（2026-11-15 第 26 条）：35% 概率拖到中途停 300~800ms 再继续，像人在对位置；
+    // 真人的拖动不是一拽到底，中途会有迟疑。
+    var hesitateAt = Math.random() < 0.35 ? rand(0.25, 0.7) : -1;
+    var hesitateDone = false;
     recordGesture({ type: 'drag', node: node.name, target: target.name, from: sp, to: tp, dur: Math.round(dur), press: Math.round(pressMs), curve: Math.round(curve), os: Math.round(osAmount), path: PATH_TEST ? track : undefined });
     function moveStep() {
       try {
         var t = Math.min(1, (Date.now() - t0) / dur);
+        // 中途犹豫：到点停一次；暂停期间把 t0 同步往后推，进度冻结（不然后半段会跳变）
+        if (!hesitateDone && hesitateAt > 0 && t >= hesitateAt) {
+          hesitateDone = true;
+          var pauseMs = Math.round(rand(300, 800));
+          t0 += pauseMs;
+          A.log.push('HESITATE ' + pauseMs + 'ms');
+          setTimeout(moveStep, pauseMs);
+          return;
+        }
         var e = ease(t), arc = Math.sin(Math.PI * t);
         // 过冲项：t≤0.8 时从 0 涨到 1（冲过目标），t 0.8→1 收回到 0（折回目标点）
         var osK = osAmount ? (t < 0.8 ? t / 0.8 : (1 - (t - 0.8) / 0.2)) : 0;
@@ -675,6 +701,30 @@
   var lastProg = '', lastAt = 0, idle = 0, gen = 0, waitUntil = 0, lastMini = -1, lastStep = -1;
   // 开局/转场后"先看一眼画面"：遮罩落下后先停 3~5 秒再出手。
   var pendingIntro = false, introFrom = 0, introMs = 0, lastMiniSeen = -1, lastPre = null;
+  // 拟人（2026-11-15 第 26~28 条，直播防"脚本判定"）：
+  //   走神：每关 70% 概率，在 30~120 秒处停 10~30 秒不动
+  //   点空白：每关 0~2 次，点画面边缘空白处（不碰可交互物）
+  var dazeDone = false, dazeAt = -1, blankPlan = 0, blankDone = 0;
+
+  // 点一下画面边缘的空白处（左侧或右侧 3%~12% 宽度，垂直 35%~65%）
+  // 选这个区域是因为它不压任何道具/按钮（实测截图确认）。
+  function tapBlank() {
+    try {
+      var canvas = CC().find('Canvas');
+      if (!canvas) return false;
+      var w = 750, h = 1334;
+      try { var ws = CC().winSize(); if (ws && ws.width) { w = ws.width; h = ws.height; } } catch (e0) {}
+      var side = Math.random() < 0.5;
+      var x = (side ? rand(0.88, 0.97) : rand(0.03, 0.12)) * w;
+      var y = rand(0.35, 0.65) * h;
+      emit(canvas, CC().Node.EventType.TOUCH_START, x, y, 0, 0);
+      setTimeout(function () {
+        try { emit(canvas, CC().Node.EventType.TOUCH_END, x, y, 0, 0); } catch (e1) {}
+      }, rand(40, 120));
+      A.log.push('BLANK ' + Math.round(x) + ',' + Math.round(y));
+      return true;
+    } catch (e) { return false; }
+  }
   var REPEAT = { ClickMaxNum: 1, ClickTimeNum: 1, TouchCuo: 1 };
   function beginIntro(why) {
     // 同一个"看画面"窗口只计一次：还在等（尚未开始计时）就不重置，避免换关时叠加成 6~10 秒
@@ -737,6 +787,11 @@
         // 拿错状态**不在这里重置**：组件对象身份不可靠（两关之间可能复用），
         // 同关内还会被反复触发 → 一关拿错到上百次（2026-11-05 实测）。
         // 现在改由 tryWrongPick 按「关卡号」自己管。
+        // 拟人（2026-11-15）：每关重新规划「走神」和「点空白」
+        dazeDone = false;
+        dazeAt = Math.random() < 0.7 ? Date.now() + rand(30000, 120000) : -1;   // 70% 概率，进场 30~120 秒后走神一次
+        blankDone = 0;
+        blankPlan = Math.floor(Math.random() * 3);                              // 每关 0~2 次点空白
         beginIntro('level' + ((p.ctrl.interConfig && p.ctrl.interConfig.lv) || '?'));
       } else if (lastMiniSeen >= 0 && p.currentMiniLv === lastMiniSeen + 1) {
         beginIntro('scene' + p.currentMiniLv);
@@ -762,9 +817,11 @@
           return;
         }
         idle++;
-        // 做过步骤的关（fin>0）说明是末段无提示：3 秒就收尾；一步没做的（fin=0）保持 20 秒等真卡住
-        var idleMax = (p.currentStepFinishNum > 0) ? 12 : 80;
-        if (idle > idleMax) { A._why = (p.currentStepFinishNum > 0) ? 'scene-done' : 'idle-no-tip'; A.running = false; return; }
+        // 末段（结算/成功界面）游戏不给提示。统一等 20 秒（80 × 250ms）再收尾。
+        // 2026-11-14 收回原来的「fin>0 就 3 秒」：只省 17 秒，但若刚好处在长动画/道具延迟出现的空窗期，
+        // 会把中途误判成通关 → 直接跳掉整关。真卡住有 boot 的 30 秒 stalled 接管，不会真的干等。
+        var idleMax = 80;
+        if (idle > idleMax) { A._why = 'idle-no-tip'; A.running = false; return; }
         setTimeout(function () { tick(g); }, 250);
         return;
       }
@@ -822,6 +879,17 @@
       // 拟人（2026-11-11 直播版）：动作间停顿 1.2~2.6 秒，像真人在找下一个目标
       waitUntil = Date.now() + Math.max(dur * 1000 + 1200 + Math.random() * 1400, gap);
       if (A._gestureUntil && A._gestureUntil > waitUntil) waitUntil = A._gestureUntil;
+      // 拟人（2026-11-15 第 27 条）：走神——到点后本关停一次 10~30 秒不动（真人会看手机/喝水）
+      if (!dazeDone && dazeAt > 0 && Date.now() >= dazeAt) {
+        dazeDone = true;
+        var dazeMs = Math.round(rand(10000, 30000));
+        A.log.push('DAZE ' + Math.round(dazeMs / 1000) + 's');
+        waitUntil = Date.now() + dazeMs;
+      }
+      // 拟人（2026-11-15 第 28 条）：点空白——每关 0~2 次，每次动作后 12% 概率触发
+      if (blankDone < blankPlan && Math.random() < 0.12) {
+        if (tapBlank()) blankDone++;
+      }
       setTimeout(function () { tick(g); }, 200);
     } catch (e) {
       A.err = String(e) + '\n' + (e.stack || '');
@@ -831,12 +899,24 @@
 
   A.start = function () {
     A.running = true; A._why = null; A.err = null;
+    // 2026-11-15：每关清空手势记录，保留本关完整序列（原先只留最近 12 条，
+    // 无法验证"同一关第 1 次 vs 第 20 次"的操作差异）。
+    A.gestures = [];
+    A._levelGestureStart = Date.now();
     lastProg = ''; lastAt = 0; idle = 0; lastMini = -1; lastStep = -1;
     A._progSeen = ''; A.lastProgressAt = Date.now();
     // 记下启动时已存在的关卡组件（boot 在新关加载完才 start），避免把同一组件误判成"换关"
     lastPre = null;
     try { lastPre = preComp(); } catch (e) {}
     lastMiniSeen = lastPre ? lastPre.currentMiniLv : -1;
+    // 拟人（2026-11-15）：启动时也要规划一次走神/点空白——否则第一关
+    //   p === lastPre（start 里已经把 lastPre 设成当前组件），换关分支不会触发，
+    //   这两个功能整关都不生效（实测踩到：跑 4 分钟一个 DAZE/BLANK 都没有）。
+    dazeDone = false;
+    dazeAt = Math.random() < 0.7 ? Date.now() + rand(30000, 120000) : -1;
+    blankDone = 0;
+    blankPlan = Math.floor(Math.random() * 3);
+    A.log.push('PLAN daze=' + (dazeAt > 0 ? Math.round((dazeAt - Date.now()) / 1000) + 's' : 'off') + ' blank=' + blankPlan);
     pendingIntro = false; introFrom = 0;
     beginIntro('level-start');
     gen++;
